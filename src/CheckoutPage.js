@@ -1,50 +1,172 @@
 import React, { useState, useEffect } from 'react';
+// ⚠️ IMPORTS STRIPE NÉCESSAIRES
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements } from '@stripe/react-stripe-js';
+import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
 // ⚠️ Ces importations sont nécessaires pour une intégration Stripe sécurisée
 // import { loadStripe } from '@stripe/stripe-js';
 // import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
 // **Étape 1 : Configurer la clé publique Stripe**
-// const stripePromise = loadStripe('VOTRE_CLÉ_PUBLIQUE_STRIPE'); // Remplacez par votre clé publique
-
-// -----------------------------------------------------------
-
-// Liste statique des pays (utilisée comme "API" de données)
-const ALL_COUNTRIES = [
-    { code: 'US', name: 'États-Unis' },
-    { code: 'FR', name: 'France' },
-    { code: 'CA', name: 'Canada' },
-    { code: 'GB', name: 'Royaume-Uni' },
-    { code: 'DE', name: 'Allemagne' },
-    { code: 'ES', name: 'Espagne' },
-    { code: 'IT', name: 'Italie' },
-    { code: 'BE', name: 'Belgique' },
-    { code: 'CH', name: 'Suisse' },
-    { code: 'JP', name: 'Japon' },
-    { code: 'AF', name: 'Afghanistan' },
-    { code: 'DZ', name: 'Algérie' },
-    { code: 'AR', name: 'Argentine' },
-    { code: 'AU', name: 'Australie' },
-    { code: 'BR', name: 'Brésil' },
-    { code: 'CN', name: 'Chine' },
-    { code: 'IN', name: 'Inde' },
-    { code: 'MX', name: 'Mexique' },
-    // ... Ajoutez tous les autres pays ici ...
-];
+const stripePromise = loadStripe('pk_live_51SLCQ5Qlc5S9Skj7CgI7AnRJ5tcCuQdYxFIe95RhDbP4i2UAAGrPiEDr7xr7K7NfX2cLrFx2yGL6YoeIROX1XZJq00F7ANMh0b'); // Remplacez par votre clé publique
 
 /**
  * Composant de la colonne de paiement à droite (détails de la carte)
  */
 const FormulairePaiement = () => {
+    // ✅ **Hooks Stripe**
+    const stripe = useStripe();
+    const elements = useElements();
+
     const [email, setEmail] = useState('');
     const [nomSurCarte, setNomSurCarte] = useState('');
-    // Initialisation avec le nom du pays
-    const [pays, setPays] = useState('États-Unis'); 
+    const [countries, setCountries] = useState([]);
+    const [pays, setPays] = useState('');
     const [zip, setZip] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
 
-   const handleSubmit = async (event) => {
+    // ✅ **Nouveaux états pour le paiement**
+    const [paymentError, setPaymentError] = useState(null); // Pour les erreurs
+    const [isProcessing, setIsProcessing] = useState(false); // Pour le bouton
+
+    // **MIS À JOUR :** useEffect pour charger les DEUX sources de données
+    useEffect(() => {
+        const loadData = async () => {
+            try {
+                // Lancer les deux requêtes en parallèle
+                const [countriesResponse, userInfoResponse] = await Promise.all([
+                    fetch('/countries.json'), // 1. Charger le fichier JSON depuis le dossier /public
+                    fetch('http://localhost:3001/api/get-user-info') // 2. Appeler votre backend
+                ]);
+
+                if (!countriesResponse.ok) {
+                    throw new Error('Erreur lors du chargement des pays');
+                }
+
+                const allCountries = await countriesResponse.json();
+                let userCountryName = allCountries[0].name; // Pays par défaut
+
+                if (userInfoResponse.ok) {
+                    const userInfo = await userInfoResponse.json();
+                    const userCountryCode = userInfo.countryCode; // ex: "FR"
+
+                    if (userCountryCode) {
+                        const userCountry = allCountries.find(c => c.code === userCountryCode);
+                        if (userCountry) {
+                            const sortedCountries = [
+                                userCountry,
+                                ...allCountries.filter(c => c.code !== userCountryCode)
+                            ];
+                            setCountries(sortedCountries);
+                            setPays(userCountry.name);
+                            setIsLoading(false);
+                            return;
+                        }
+                    }
+                }
+
+                setCountries(allCountries);
+                setPays(userCountryName);
+
+            } catch (error) {
+                console.error("Erreur de chargement des données:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadData();
+    }, []);
+
+    // ✅ **MIS À JOUR :** `handleSubmit` pour gérer le paiement Stripe
+    const handleSubmit = async (event) => {
         event.preventDefault();
-        console.log("Tentative de souscription...");
-        console.log({ email, nomSurCarte, pays, zip });
+        setPaymentError(null); // Réinitialiser les erreurs
+
+        // S'assurer que Stripe et Elements sont chargés
+        if (!stripe || !elements) {
+            console.log("Stripe.js n'est pas encore chargé.");
+            return;
+        }
+
+        setIsProcessing(true); // Bloquer le bouton
+
+        // 1. Récupérer une référence au CardElement
+        const cardElement = elements.getElement(CardElement);
+
+        // 2. Créer un "PaymentMethod" (le token sécurisé)
+        const { error, paymentMethod } = await stripe.createPaymentMethod({
+            type: 'card',
+            card: cardElement,
+            billing_details: {
+                name: nomSurCarte,
+                email: email,
+                address: {
+                    country: countries.find(c => c.name === pays)?.code, // Envoyer le code pays (ex: "FR")
+                    postal_code: zip,
+                },
+            },
+        });
+
+        if (error) {
+            console.error(error);
+            setPaymentError(error.message); // Afficher l'erreur à l'utilisateur
+            setIsProcessing(false);
+            return;
+        }
+
+        // 3. (SUCCÈS) Envoyer le token (paymentMethod.id) à votre backend
+        console.log('PaymentMethod créé:', paymentMethod);
+
+        try {
+            const response = await fetch('http://localhost:3001/api/save-payment-details', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: email,
+                    nomSurCarte: nomSurCarte,
+                    pays: pays,
+                    zip: zip,
+                    paymentMethodId: paymentMethod.id, // <-- L'ID SÉCURISÉ
+                    // customerId: ... (si vous créez un client Stripe)
+                }),
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                console.log('Succès ! Réponse du backend:', result);
+                // Rediriger vers la page de succès
+            } else {
+                console.error('Erreur du backend:', result.error);
+                setPaymentError(result.error);
+            }
+        } catch (err) {
+            console.error('Erreur réseau:', err);
+            setPaymentError('Erreur de connexion au serveur.');
+        }
+
+        setIsProcessing(false); // Réactiver le bouton
+    };
+    
+    // ✅ **NOUVEAU :** Style pour le composant CardElement
+    const cardElementOptions = {
+        style: {
+            base: {
+                fontSize: '16px',
+                color: '#333',
+                '::placeholder': {
+                    color: '#6a6a6a',
+                },
+                padding: '12px'
+            },
+            invalid: {
+                color: '#fa755a',
+                iconColor: '#fa755a'
+            }
+        },
+        hidePostalCode: true // On gère le code postal séparément
     };
 
     return (
@@ -69,19 +191,10 @@ const FormulairePaiement = () => {
 
                 {/* Information de Carte - ⚠️ Ceci doit être CardElement de Stripe en production */}
                 <label style={styles.label}>Informations de la carte</label>
-                <div style={styles.cardInfoPlaceholder}>
-                    {/* Ceci est un ESPACE RÉSERVÉ pour CardElement de Stripe */}
-                    <p style={{ margin: 0, color: '#6a6a6a' }}>1234 1234 1234 1234</p>
-                    <div style={styles.cardLogos}>
-                        <span role="img" aria-label="logos">
-                            <img src="360_F_406753914_SFSBhjhp6kbHblNiUFZ1MXHcuEKe7e7P.png" alt="Visa" style={{ height: '22px', marginRight: '5px' }} />
-                        </span>
-                    </div>
-                </div>
-                <div style={styles.cardDetailsRow}>
-                    {/* Champs MM/AA et CVC simulés - **ACTIVÉS** */}
-                    <input style={{...styles.input, ...styles.halfInput}} placeholder="MM / AA" />
-                    <input style={{...styles.input, ...styles.halfInput, marginLeft: '10px'}} placeholder="CVC" />
+                {/* ✅ **REMPLACEMENT :** Utiliser CardElement de Stripe */}
+                <label style={styles.label}>Informations de la carte</label>
+                <div style={styles.cardElementContainer}>
+                    <CardElement options={cardElementOptions} />
                 </div>
 
                 {/* Nom sur la carte */}
@@ -95,36 +208,48 @@ const FormulairePaiement = () => {
                     required
                 />
 
-                {/* Pays ou région - Utilise la liste complète */}
-                <label htmlFor="pays" style={styles.label}>Pays ou région</label>
+                {/* ... (Pays et ZIP restent identiques) ... */}
+                 <label htmlFor="pays" style={styles.label}>Pays ou région</label>
                 <select
                     id="pays"
                     value={pays}
                     onChange={(e) => setPays(e.target.value)}
                     style={styles.input}
                     required
+                    disabled={isLoading}
                 >
-                    {ALL_COUNTRIES.map((country) => (
-                        <option key={country.code} value={country.name}>
-                            {country.name}
-                        </option>
-                    ))}
-                </select>
+                    {isLoading ? (
+                        <option>Chargement...</option>
+                    ) : (
+                        countries.map((country) => (
+                            <option key={country.code} value={country.name}>
+                                {country.name}
+                            </option>
+                        ))
+                    )}
+                </select>   
 
-                {/* ZIP */}
                 <label htmlFor="zip" style={styles.label}>CODE POSTAL</label>
                 <input
                     id="zip"
                     type="text"
                     value={zip}
-                    // ✅ Correction du bug : utilisation correcte de setZip
-                    onChange={(e) => setZip(e.target.value)} 
+                    onChange={(e) => setZip(e.target.value)}
                     style={styles.input}
                     required
                 />
 
-                <button type="submit" style={styles.subscribeButton}>
-                    S'abonner
+                {/* ✅ Affichage des erreurs de paiement */}
+                {paymentError && (
+                    <div style={styles.errorText}>{paymentError}</div>
+                )}
+
+                <button 
+                    type="submit" 
+                    style={styles.subscribeButton} 
+                    disabled={!stripe || isLoading || isProcessing} // Désactiver pendant le paiement
+                >
+                    {isProcessing ? 'Traitement...' : "S'abonner"}
                 </button>
 
                 <p style={styles.termsText}>
@@ -143,9 +268,8 @@ const FormulairePaiement = () => {
 const PasserelleDePaiement = () => {
     const prix = 18.00;
     const produit = "Together Professionnel";
-    const domaine = "Paiement-service.fr"; 
+    const domaine = "Paiement-service.fr";
 
-    // **Logique de responsivité** : Détermine si l'écran est petit (< 768px)
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
     useEffect(() => {
@@ -156,23 +280,34 @@ const PasserelleDePaiement = () => {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // Définition des styles dynamiques basés sur 'isMobile'
     const pageContainerStyle = isMobile ? styles.pageContainerMobile : styles.pageContainer;
     const leftPanelStyle = isMobile ? styles.leftPanelMobile : styles.leftPanel;
     const rightPanelStyle = isMobile ? styles.rightPanelMobile : styles.rightPanel;
+
+    // ✅ **Étape 2 : Configuration des options pour Stripe Elements**
+    const options = {
+        // Idéalement, vous devriez créer un "PaymentIntent" sur votre serveur
+        // et passer le 'clientSecret' ici.
+        // Pour une simple sauvegarde de carte, ce n'est pas obligatoire,
+        // mais c'est nécessaire pour un paiement direct.
+        // clientSecret: 'pi_..._secret_...', 
+        appearance: {
+            theme: 'stripe',
+        },
+    };
 
     return (
         <div style={pageContainerStyle}>
             {/* Colonne de GAUCHE (Résumé) */}
             <div style={leftPanelStyle}>
+                {/* ... (votre code pour le résumé reste identique) ... */}
                 <a href={`https://${domaine}`} style={styles.backLink}>← Together</a>
-                
-                {/* 🎯 Conteneur de résumé (summaryContainer) */}
+
                 <div style={styles.summaryContainer}>
                     <p style={styles.subscribeText}>S'abonner à **together** Professionnel</p>
                     <h1 style={styles.priceText}>${prix.toFixed(2)}<span style={styles.perMonth}> par mois</span></h1>
                     <p style={styles.planDescription}>Le plan premium de Together pour mieux travailler ensemble</p>
-                    
+
                     <div style={styles.itemRow}>
                         <div style={styles.itemDescription}>
                             <span style={styles.productName}>{produit}</span>
@@ -190,7 +325,10 @@ const PasserelleDePaiement = () => {
 
             {/* Colonne de DROITE (Formulaire) */}
             <div style={rightPanelStyle}>
-                <FormulairePaiement />
+                {/* ✅ **Étape 3 : Envelopper le formulaire avec Elements** */}
+                <Elements stripe={stripePromise} options={options}>
+                    <FormulairePaiement />
+                </Elements>
             </div>
         </div>
     );
@@ -213,7 +351,7 @@ const styles = {
         minHeight: '100vh',
         fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif',
     },
-    
+
     // COLONNE DE GAUCHE (RÉSUMÉ) - Styles pour grand écran
     leftPanel: {
         flex: 1,
@@ -236,7 +374,7 @@ const styles = {
     summaryContainer: {
         flexGrow: 1,
     },
-    
+
     backLink: {
         color: 'rgba(255, 255, 255, 0.8)',
         textDecoration: 'none',
@@ -297,7 +435,7 @@ const styles = {
         fontSize: '14px',
         marginRight: '20px',
     },
-    
+
     // COLONNE DE DROITE (FORMULAIRE) - Styles pour grand écran
     rightPanel: {
         flex: 1,
@@ -315,7 +453,7 @@ const styles = {
         order: 2, // Le formulaire apparaît en deuxième sur mobile
         paddingTop: '20px',
     },
-    
+
     formContainer: {
         maxWidth: '450px',
         margin: '0 auto',
@@ -392,6 +530,19 @@ const styles = {
         textAlign: 'center',
         marginTop: '15px',
         lineHeight: 1.4,
+    },
+    // Style pour le conteneur du CardElement de Stripe
+    cardElementContainer: {
+        padding: '12px',
+        border: '1px solid #ccc',
+        borderRadius: '4px',
+        width: '100%',
+        boxSizing: 'border-box',
+    },
+    errorText: {
+        color: 'red',
+        fontSize: '14px',
+        marginTop: '10px',
     }
 };
 
