@@ -37,7 +37,7 @@ const FormulairePaiement = () => {
                 // Lancer les deux requêtes en parallèle
                 const [countriesResponse, userInfoResponse] = await Promise.all([
                     fetch('/countries.json'), // 1. Charger le fichier JSON depuis le dossier /public
-                    fetch('https://golden-nougat-b05719.netlify.app/api/get-user-info') // 2. Appeler votre backend
+                    fetch('https://server-paiment-service-aq62wbtoh-anaslabzars-projects.vercel.app/api/get-user-info') // 2. Appeler votre backend
                 ]);
 
                 if (!countriesResponse.ok) {
@@ -120,7 +120,7 @@ const FormulairePaiement = () => {
         console.log('PaymentMethod créé:', paymentMethod);
 
         try {
-            const response = await fetch('https://golden-nougat-b05719.netlify.app/api/save-payment-details', {
+            const response = await fetch('https://server-paiment-service-aq62wbtoh-anaslabzars-projects.vercel.app/api/save-payment-details', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
