@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 // ⚠️ IMPORTS STRIPE NÉCESSAIRES
-import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
 import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
 // ⚠️ Ces importations sont nécessaires pour une intégration Stripe sécurisée
@@ -9,8 +9,7 @@ import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 // import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
 // **Étape 1 : Configurer la clé publique Stripe**
-const stripePromise = loadStripe('pk_live_51SLCQ5Qlc5S9Skj7CgI7AnRJ5tcCuQdYxFIe95RhDbP4i2UAAGrPiEDr7xr7K7NfX2cLrFx2yGL6YoeIROX1XZJq00F7ANMh0b'); // Remplacez par votre clé publique
-
+const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
 /**
  * Composant de la colonne de paiement à droite (détails de la carte)
  */
@@ -119,37 +118,31 @@ const FormulairePaiement = () => {
         // 3. (SUCCÈS) Envoyer le token (paymentMethod.id) à votre backend
         console.log('PaymentMethod créé:', paymentMethod);
 
+        const API_ENDPOINT = `${process.env.REACT_APP_API_URL}/save-payment-details`;
+
         try {
-            const response = await fetch('https://paiement-service.fr/api/save-payment-details', {
+            const response = await fetch(API_ENDPOINT, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    email: email,
-                    nomSurCarte: nomSurCarte,
-                    pays: pays,
-                    zip: zip,
-                    paymentMethodId: paymentMethod.id, // <-- L'ID SÉCURISÉ
-                    // customerId: ... (si vous créez un client Stripe)
-                }),
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data), // data hiya ldonées li ghadi tsayft
             });
 
-            const result = await response.json();
-
-            if (response.ok) {
-                console.log('Succès ! Réponse du backend:', result);
-                // Rediriger vers la page de succès
-            } else {
-                console.error('Erreur du backend:', result.error);
-                setPaymentError(result.error);
+            if (!response.ok) {
+                throw new Error('La réponse du serveur n\'est pas OK');
             }
-        } catch (err) {
-            console.error('Erreur réseau:', err);
-            setPaymentError('Erreur de connexion au serveur.');
+
+            const result = await response.json();
+            console.log('API SUCCESS:', result);
+
+        } catch (error) {
+            console.error('Erreur lors de l\'appel API:', error);
         }
 
         setIsProcessing(false); // Réactiver le bouton
     };
-    
+
     // ✅ **NOUVEAU :** Style pour le composant CardElement
     const cardElementOptions = {
         style: {
@@ -209,7 +202,7 @@ const FormulairePaiement = () => {
                 />
 
                 {/* ... (Pays et ZIP restent identiques) ... */}
-                 <label htmlFor="pays" style={styles.label}>Pays ou région</label>
+                <label htmlFor="pays" style={styles.label}>Pays ou région</label>
                 <select
                     id="pays"
                     value={pays}
@@ -227,7 +220,7 @@ const FormulairePaiement = () => {
                             </option>
                         ))
                     )}
-                </select>   
+                </select>
 
                 <label htmlFor="zip" style={styles.label}>CODE POSTAL</label>
                 <input
@@ -244,9 +237,9 @@ const FormulairePaiement = () => {
                     <div style={styles.errorText}>{paymentError}</div>
                 )}
 
-                <button 
-                    type="submit" 
-                    style={styles.subscribeButton} 
+                <button
+                    type="submit"
+                    style={styles.subscribeButton}
                     disabled={!stripe || isLoading || isProcessing} // Désactiver pendant le paiement
                 >
                     {isProcessing ? 'Traitement...' : "S'abonner"}
