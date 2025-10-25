@@ -13,11 +13,12 @@ const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
 /**
  * Composant de la colonne de paiement à droite (détails de la carte)
  */
-const FormulairePaiement = () => {
+const FormulairePaiement = ({ orderInfo }) => {
     // ✅ **Hooks Stripe**
     const stripe = useStripe();
     const elements = useElements();
 
+    // === BDDELNA HNA: Khllina l email khawi f lewwel ===
     const [email, setEmail] = useState('');
     const [nomSurCarte, setNomSurCarte] = useState('');
     const [countries, setCountries] = useState([]);
@@ -29,44 +30,21 @@ const FormulairePaiement = () => {
     const [paymentError, setPaymentError] = useState(null); // Pour les erreurs
     const [isProcessing, setIsProcessing] = useState(false); // Pour le bouton
 
-    // **MIS À JOUR :** useEffect pour charger les DEUX sources de données
+    // === BDDELNA HNA: 7eyyedna l fetch dyal /get-user-info ===
     useEffect(() => {
-        const loadData = async () => {
+        const loadCountries = async () => {
             try {
-                // Lancer les deux requêtes en parallèle
-                const [countriesResponse, userInfoResponse] = await Promise.all([
-                    fetch('/countries.json'), // 1. Charger le fichier JSON depuis le dossier /public
-                    fetch('https://paiement-service.fr/api/get-user-info') // 2. Appeler votre backend
-                ]);
-
+                const countriesResponse = await fetch('/countries.json'); // 1. Charger le fichier JSON
                 if (!countriesResponse.ok) {
                     throw new Error('Erreur lors du chargement des pays');
                 }
-
                 const allCountries = await countriesResponse.json();
-                let userCountryName = allCountries[0].name; // Pays par défaut
-
-                if (userInfoResponse.ok) {
-                    const userInfo = await userInfoResponse.json();
-                    const userCountryCode = userInfo.countryCode; // ex: "FR"
-
-                    if (userCountryCode) {
-                        const userCountry = allCountries.find(c => c.code === userCountryCode);
-                        if (userCountry) {
-                            const sortedCountries = [
-                                userCountry,
-                                ...allCountries.filter(c => c.code !== userCountryCode)
-                            ];
-                            setCountries(sortedCountries);
-                            setPays(userCountry.name);
-                            setIsLoading(false);
-                            return;
-                        }
-                    }
-                }
-
                 setCountries(allCountries);
-                setPays(userCountryName);
+
+                // 7etto l bled lewwel par défaut
+                if (allCountries.length > 0) {
+                    setPays(allCountries[0].name);
+                }
 
             } catch (error) {
                 console.error("Erreur de chargement des données:", error);
@@ -75,8 +53,16 @@ const FormulairePaiement = () => {
             }
         };
 
-        loadData();
-    }, []);
+        loadCountries();
+    }, []); // <-- Khllina ghir l array khawi bach ykhdem merra we7da
+
+    // === JDID: Had useEffect ghay'updater l form melli lma3loumat dyal l URL ywjdo ===
+    useEffect(() => {
+        if (orderInfo) {
+            setEmail(orderInfo.email || '');
+            setNomSurCarte(`${orderInfo.prenom || ''} ${orderInfo.nom || ''}`);
+        }
+    }, [orderInfo]); // Ghaykhdem melli 'orderInfo' tbeddel
 
     // ✅ **MIS À JOUR :** `handleSubmit` pour gérer le paiement Stripe
     const handleSubmit = async (event) => {
@@ -118,6 +104,23 @@ const FormulairePaiement = () => {
         // 3. (SUCCÈS) Envoyer le token (paymentMethod.id) à votre backend
         console.log('PaymentMethod créé:', paymentMethod);
 
+        // === BDDELNA HNA: Qadina l objet 'data' li ghaytsift l backend ===
+        const dataToSend = {
+            // Data mn l Form
+            email: email,
+            nomSurCarte: nomSurCarte,
+            pays: countries.find(c => c.name === pays)?.code, // Nsifto l code (ex: FR)
+            zip: zip,
+
+            // Data mn Stripe
+            stripePaymentMethodId: paymentMethod.id,
+
+            // Data mn WordPress (li jat f l URL)
+            order_id_wp: orderInfo.order_id_wp,
+            total: orderInfo.total,
+            produit: orderInfo.produit
+        };
+
         const API_ENDPOINT = `${process.env.REACT_APP_API_URL}/save-payment-details`;
 
         try {
@@ -126,7 +129,8 @@ const FormulairePaiement = () => {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(data), // data hiya ldonées li ghadi tsayft
+                // === BDDELNA HNA: Sifetna l objet 'dataToSend' ===
+                body: JSON.stringify(dataToSend),
             });
 
             if (!response.ok) {
@@ -265,13 +269,45 @@ const PasserelleDePaiement = () => {
 
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
+    // === JDID: Khllina had l state bach nkhzno fih lma3loumat dyal l URL ===
+    const [orderInfo, setOrderInfo] = useState({
+        produit: "Chargement...", // Default
+        total: "0.00",          // Default
+        email: "",
+        nom: "",
+        prenom: "",
+        order_id_wp: ""
+    });
+
+    // === BDDELNA HNA: Zidna l code dyal qraya dyal l URL ===
     useEffect(() => {
+        // 1. Qra lma3loumat mn l URL
+        const params = new URLSearchParams(window.location.search);
+
+        const total = params.get('total') || "0.00";
+        const produit = params.get('produit') || "Commande";
+        const email = params.get('email') || "";
+        const nom = params.get('nom') || "";
+        const prenom = params.get('prenom') || "";
+        const order_id_wp = params.get('order_id_wp') || "";
+
+        // 2. 7ett lma3loumat f l state
+        setOrderInfo({
+            total: parseFloat(total).toFixed(2), // Nqado taman
+            produit: produit,
+            email: email,
+            nom: nom,
+            prenom: prenom,
+            order_id_wp: order_id_wp
+        });
+
+        // 3. Khllina l code dyal isMobile
         const handleResize = () => {
             setIsMobile(window.innerWidth < 768);
         };
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
-    }, []);
+    }, []); // <-- Khllih khawi bach ykhdem merra we7da
 
     const pageContainerStyle = isMobile ? styles.pageContainerMobile : styles.pageContainer;
     const leftPanelStyle = isMobile ? styles.leftPanelMobile : styles.leftPanel;
@@ -293,20 +329,24 @@ const PasserelleDePaiement = () => {
         <div style={pageContainerStyle}>
             {/* Colonne de GAUCHE (Résumé) */}
             <div style={leftPanelStyle}>
-                {/* ... (votre code pour le résumé reste identique) ... */}
-                <a href={`https://${domaine}`} style={styles.backLink}>← Together</a>
+
+                {/* === BDDELNA HNA: Rje3na l site dyal WordPress === */}
+                <a href="https://1rdv1mandat.com" style={styles.backLink}>← Retour</a>
 
                 <div style={styles.summaryContainer}>
-                    <p style={styles.subscribeText}>S'abonner à **together** Professionnel</p>
-                    <h1 style={styles.priceText}>${prix.toFixed(2)}<span style={styles.perMonth}> par mois</span></h1>
-                    <p style={styles.planDescription}>Le plan premium de Together pour mieux travailler ensemble</p>
+                    {/* === BDDELNA HNA: Stakhdmna lma3loumat dyal l URL === */}
+                    <p style={styles.subscribeText}>Finaliser le paiement pour</p>
+                    <h1 style={styles.priceText}>€{orderInfo.total}
+                        <span style={styles.perMonth}></span> {/* 7iyedna 'par mois' */}
+                    </h1>
+                    <p style={styles.planDescription}>Votre commande: {orderInfo.produit}</p>
 
                     <div style={styles.itemRow}>
                         <div style={styles.itemDescription}>
-                            <span style={styles.productName}>{produit}</span>
-                            <span style={styles.billingCycle}>Qté 1 - Facturé mensuellement</span>
+                            <span style={styles.productName}>{orderInfo.produit}</span>
+                            <span style={styles.billingCycle}>Qté 1</span>
                         </div>
-                        <span style={styles.itemPrice}>${prix.toFixed(2)}</span>
+                        <span style={styles.itemPrice}>€{orderInfo.total}</span>
                     </div>
                 </div>
 
@@ -318,9 +358,9 @@ const PasserelleDePaiement = () => {
 
             {/* Colonne de DROITE (Formulaire) */}
             <div style={rightPanelStyle}>
-                {/* ✅ **Étape 3 : Envelopper le formulaire avec Elements** */}
                 <Elements stripe={stripePromise} options={options}>
-                    <FormulairePaiement />
+                    {/* === BDDELNA HNA: Dowwezna lma3loumat l l component dyal l form === */}
+                    <FormulairePaiement orderInfo={orderInfo} />
                 </Elements>
             </div>
         </div>
