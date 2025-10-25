@@ -185,9 +185,7 @@ const FormulairePaiement = ({ orderInfo }) => {
                     style={styles.input}
                     required
                 />
-
-                {/* Information de Carte - ⚠️ Ceci doit être CardElement de Stripe en production */}
-                <label style={styles.label}>Informations de la carte</label>
+                
                 {/* ✅ **REMPLACEMENT :** Utiliser CardElement de Stripe */}
                 <label style={styles.label}>Informations de la carte</label>
                 <div style={styles.cardElementContainer}>
