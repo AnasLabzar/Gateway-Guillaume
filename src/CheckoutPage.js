@@ -305,7 +305,7 @@ const styles = {
     leftPanelMobile: { width: '100%', color: 'white', padding: '30px 20px', order: 1 },
     summaryContainer: { flexGrow: 1, marginTop: '30px' },
     backLink: { color: 'rgba(255, 255, 255, 0.8)', textDecoration: 'none', fontSize: '16px', marginBottom: '30px', display: 'inline-block' },
-    summaryLogo: { maxWidth: '150px', maxHeight: '50px', objectFit: 'contain', marginBottom: '30px', display: 'block' },
+    summaryLogo: { maxWidth: '300px', maxHeight: '50px', objectFit: 'contain', marginBottom: '30px', display: 'block' },
     summaryTitle: { fontSize: '20px', fontWeight: '600', marginBottom: '20px', paddingBottom: '15px', borderBottom: '1px solid rgba(255, 255, 255, 0.2)', color: 'rgba(255, 255, 255, 0.9)' },
     productList: { marginBottom: '20px' },
     productItem: { display: 'flex', justifyContent: 'space-between', padding: '12px 0', fontSize: '16px', opacity: 0.9, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' },
