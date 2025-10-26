@@ -1,26 +1,47 @@
 import React, { useState, useEffect } from 'react';
+// === JDID: Importer Link mn React Router ===
+import { Link } from 'react-router-dom'; 
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+// Optional: If using icon library like react-icons
+import { FaLock, FaCreditCard } from 'react-icons/fa';
+import { SiVisa, SiMastercard, SiAmericanexpress } from 'react-icons/si';
+
 
 const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
 
 // === Configuration des Thèmes par Domaine ===
 const themes = {
-    '1rdv1mandat.com': {
-        primaryColor: '#FF6600', // Orange 1rdv
-        secondaryColor: '#002D6F', // Bleu foncé 1rdv
-        logoUrl: 'https://1rdv1mandat.com/wp-content/uploads/2023/05/logo-footer-white-300x62.png', // Logo blanc 1rdv (ajuster si besoin)
+    '1rdv1mandat.com': { // Thème pour 1rdv1mandat
+        primaryColor: '#FF6600',    // Orange 1rdv (pour bouton principal)
+        secondaryColor: '#232323',  // Bleu foncé 1rdv (panneau gauche)
+        logoUrl: 'https://1rdv1mandat.com/wp-content/uploads/2023/05/logo-footer-white-300x62.png',
+        // --- Couleurs pour fond sombre ---
+        rightPanelBg: '#fafafaff',     // Fond sombre pour formulaire
+        formTextColor: '#000000ff',    // Texte blanc sur fond sombre
+        inputBgColor: 'rgba(249, 249, 249, 1)ff',     // Fond gris foncé pour inputs
+        inputTextColor: '#151515ff',   // Texte blanc dans inputs
+        inputBorderColor: '#e8e8e8ff', // Bordure grise pour inputs
+        dividerColor: '#555555',     // Couleur séparateur sur fond sombre
     },
-    'default': {
-        primaryColor: '#007bff',
-        secondaryColor: 'rgb(0 45 111)', // Bleu par défaut (ancien)
+    'default': { // Thème par défaut
+        primaryColor: '#007bff',       // Bleu standard (bouton)
+        secondaryColor: 'rgb(0 45 111)',// Bleu standard (panneau gauche)
         logoUrl: null,
+        // --- Couleurs par défaut (fond clair) ---
+        rightPanelBg: '#FFFFFF',     // Fond blanc
+        formTextColor: '#333333',    // Texte noir
+        inputBgColor: '#FFFFFF',     // Fond blanc
+        inputTextColor: '#333333',   // Texte noir
+        inputBorderColor: '#CCCCCC', // Bordure grise claire
+        dividerColor: '#e0e0e0',     // Couleur séparateur sur fond clair
     }
 };
 
-// === FormulairePaiement (Minimal Changes) ===
-const FormulairePaiement = ({ orderInfo, theme }) => {
+// === FormulairePaiement (Modifications UI/UX + Fix Thème) ===
+// === Composant FormulairePaiement ===
+const FormulairePaiement = ({ orderInfo, theme = themes['default'] }) => {
     const stripe = useStripe();
     const elements = useElements();
     const [email, setEmail] = useState('');
@@ -47,29 +68,20 @@ const FormulairePaiement = ({ orderInfo, theme }) => {
         loadCountries();
     }, []);
 
-    // Pré-remplir email/nom depuis orderInfo (reste identique)
+    // Pré-remplir email/nom
     useEffect(() => {
         if (orderInfo) {
             setEmail(orderInfo.email || '');
-            setNomSurCarte(orderInfo.nom_reseau || ''); // Utiliser nom_reseau pour l'instant
+            setNomSurCarte(orderInfo.nom_reseau || '');
         }
     }, [orderInfo]);
 
-    // ✅ **MIS À JOUR :** `handleSubmit` pour gérer le paiement Stripe
+    // Gérer la soumission
     const handleSubmit = async (event) => {
         event.preventDefault();
-        setPaymentError(null); // Réinitialiser les erreurs
-
-        // S'assurer que Stripe et Elements sont chargés
-        if (!stripe || !elements) {
-            console.log("Stripe.js n'est pas encore chargé.");
-            return;
-        }
-
+        if (!stripe || !elements) return;
         setIsProcessing(true); setPaymentError(null);
-        // 1. Récupérer une référence au CardElement
         const cardElement = elements.getElement(CardElement);
-
         const { error, paymentMethod } = await stripe.createPaymentMethod({
             type: 'card', card: cardElement,
             billing_details: { name: nomSurCarte, email: email, address: { country: countries.find(c => c.name === pays)?.code, postal_code: zip } }
@@ -97,57 +109,82 @@ const FormulairePaiement = ({ orderInfo, theme }) => {
         setIsProcessing(false);
     };
 
-    const cardElementOptions = { style: { base: { fontSize: '16px', color: '#333', '::placeholder': { color: '#6a6a6a' }, padding: '12px' }, invalid: { color: '#fa755a', iconColor: '#fa755a' } }, hidePostalCode: true };
-    const subscribeButtonStyle = { ...styles.subscribeButton, backgroundColor: theme.primaryColor };
+    // Styles CardElement adaptés au thème
+    const cardElementOptions = {
+        style: {
+            base: { fontSize: '16px', color: theme.inputTextColor, '::placeholder': { color: theme.formTextColor === '#FFFFFF' ? '#AAAAAA' : '#6a6a6a' }, padding: '12px' },
+            invalid: { color: '#fa755a', iconColor: '#fa755a' }
+        }, hidePostalCode: true
+    };
+
+    // Styles dynamiques
+   const subscribeButtonStyle = { ...styles.subscribeButton, backgroundColor: theme.primaryColor };
+    const labelStyle = { ...styles.label, color: theme.formTextColor };
+    const inputStyle = { ...styles.input, backgroundColor: theme.inputBgColor, color: theme.inputTextColor, borderColor: theme.inputBorderColor };
+    const cardContainerStyle = { ...styles.cardElementContainer, backgroundColor: theme.inputBgColor, borderColor: theme.inputBorderColor };
+    const selectStyle = { ...inputStyle };
+    const securityTextStyle = { ...styles.securityText, color: theme.formTextColor === '#FFFFFF' ? '#CCCCCC' : styles.securityText.color }; // Ajustement couleur texte sécurité
+    const headerDividerStyle = { ...styles.formHeaderDivider, borderBottomColor: theme.dividerColor };
+    // --- JDID: Style dynamique pour le séparateur ---
 
     return (
         <div style={styles.formContainer}>
+            {/* --- En-tête du Formulaire --- */}
+            <div style={styles.formHeader}>
+                <h3 style={{ ...styles.formTitle, color: theme.formTextColor }}>Informations de Paiement</h3>
+                <div style={styles.cardIcons}>
+                    <img src="/payment-card.png" alt="Cartes acceptées" style={styles.cardIconsImage} />
+                </div>
+            </div>
+            <hr style={headerDividerStyle} />
+
             <form onSubmit={handleSubmit}>
-                <button type='button' style={styles.applePayButton}> Payer</button>
-                <p style={styles.orDivider}>ou payer par carte</p>
-                <label htmlFor="email" style={styles.label}>Email</label>
-                <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={styles.input} required />
-                <label style={styles.label}>Informations de la carte</label>
-                <div style={styles.cardElementContainer}><CardElement options={cardElementOptions} /></div>
-                <label htmlFor="nomSurCarte" style={styles.label}>Nom sur la carte</label>
-                <input id="nomSurCarte" type="text" value={nomSurCarte} onChange={(e) => setNomSurCarte(e.target.value)} style={styles.input} required />
-                <label htmlFor="pays" style={styles.label}>Pays ou région</label>
-                <select id="pays" value={pays} onChange={(e) => setPays(e.target.value)} style={styles.input} required disabled={isLoading}>
-                    {isLoading ? (<option>Chargement...</option>) : (countries.map((c) => (<option key={c.code} value={c.name}>{c.name}</option>)))}
-                </select>
-                <label htmlFor="zip" style={styles.label}>CODE POSTAL</label>
-                <input id="zip" type="text" value={zip} onChange={(e) => setZip(e.target.value)} style={styles.input} required />
+                {/* --- Champs du formulaire --- */}
+                <label htmlFor="email" style={labelStyle}>Email</label>
+                <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} style={inputStyle} required />
+
+                <label style={labelStyle}>Informations de la carte</label>
+                <div style={cardContainerStyle}><CardElement options={cardElementOptions} /></div>
+
+                <label htmlFor="nomSurCarte" style={labelStyle}>Nom sur la carte</label>
+                <input id="nomSurCarte" type="text" value={nomSurCarte} onChange={(e) => setNomSurCarte(e.target.value)} style={inputStyle} required />
+
+                <label htmlFor="pays" style={labelStyle}>Pays ou région</label>
+                <select id="pays" value={pays} onChange={(e) => setPays(e.target.value)} style={selectStyle} required disabled={isLoading}>
+                     {isLoading ? (<option>Chargement...</option>) : (countries.map((c)=>(<option key={c.code} value={c.name}>{c.name}</option>)))}
+                 </select>
 
                 {paymentError && (<div style={styles.errorText}>{paymentError}</div>)}
+
                 <button type="submit" style={subscribeButtonStyle} disabled={!stripe || isLoading || isProcessing}>
-                    {isProcessing ? 'Traitement...' : "Valider le Paiement"} {/* Texte Bouton */}
+                    {isProcessing ? 'Traitement...' : "Valider le Paiement"}
                 </button>
-                <p style={styles.termsText}>En confirmant, vous autorisez le prélèvement sur votre carte...</p> {/* Texte Conditions */}
+
+                {/* --- Section Sécurité --- */}
+                <div style={styles.securityInfo}>
+                     <p style={securityTextStyle}>
+                        Vos informations de paiement sont cryptées et transmises de manière sécurisée via SSL. Nous respectons les normes PCI DSS pour garantir la protection de vos données.
+                    </p>
+                </div>
             </form>
         </div>
     );
 };
-
 // -----------------------------------------------------------
 
-/**
- * Composant principal de la Passerelle de Paiement
- */
 const PasserelleDePaiement = () => {
-    // === BDDELNA HNA: OrderInfo initialisé à null ===
-    const [orderInfo, setOrderInfo] = useState(null); // Sera rempli par l'URL
+
+    const [orderInfo, setOrderInfo] = useState(null);
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    // Initialise avec le thème par défaut pour éviter l'erreur
     const [currentTheme, setCurrentTheme] = useState(themes['default']);
 
-    // === BDDELNA HNA: useEffect simple qui lit l'URL SANS appeler l'API ===
+    // Lire URL et appliquer thème (reste identique)
     useEffect(() => {
-        console.log("Lecture des paramètres URL...");
         const params = new URLSearchParams(window.location.search);
-
-        const origin = params.get('origin') || 'default'; // Lire l'origine
+        const origin = params.get('origin') || 'default';
         const themeToApply = themes[origin] || themes['default'];
-        console.log("Application du thème pour l'origine:", origin, themeToApply);
-        setCurrentTheme(themeToApply); // Appliquer le thème
+        setCurrentTheme(themeToApply);
 
         // Lire les autres données de l'URL
         const orderDataFromUrl = {
@@ -165,24 +202,20 @@ const PasserelleDePaiement = () => {
 
         // Mettre à jour l'état directement
         setOrderInfo(orderDataFromUrl);
-
-        // Resize listener (reste identique)
+        // Resize listener
         const handleResize = () => setIsMobile(window.innerWidth < 768);
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
-    }, []); // <-- Se lance une seule fois
+    }, []);
 
     // Styles dynamiques
     const pageContainerStyle = isMobile ? styles.pageContainerMobile : styles.pageContainer;
-    const leftPanelStyle = isMobile
-        ? { ...styles.leftPanelMobile, backgroundColor: currentTheme.secondaryColor }
-        : { ...styles.leftPanel, backgroundColor: currentTheme.secondaryColor };
-    const rightPanelStyle = isMobile ? styles.rightPanelMobile : styles.rightPanel;
-    const backLinkStyle = { ...styles.backLink, /* Pas de couleur dynamique ici */ }; // Lien retour standard
+    const leftPanelStyle = { ...(isMobile ? styles.leftPanelMobile : styles.leftPanel), backgroundColor: currentTheme.secondaryColor };
+    const rightPanelStyle = { ...(isMobile ? styles.rightPanelMobile : styles.rightPanel), backgroundColor: currentTheme.rightPanelBg };
 
     const options = { appearance: { theme: 'stripe' } };
 
-    // Helper pour afficher la liste des produits
+    // Helper Panier Moderne
     const renderProductList = (productString) => {
         if (!productString) return <div style={styles.productItem}>Aucun produit</div>;
         const products = productString.split(',').map(name => name.trim()).filter(name => name); // Nettoyer la liste
@@ -200,45 +233,28 @@ const PasserelleDePaiement = () => {
         <div style={pageContainerStyle}>
             {/* Colonne GAUCHE (Résumé) */}
             <div style={leftPanelStyle}>
-
-                {/* Lien retour utilise l'origine stockée */}
-                <a href={orderInfo?.origin ? `https://${orderInfo.origin}` : '#'} style={backLinkStyle}>← Retour</a>
-
-                {/* === BDDELNA HNA: Affichage direct SANS loading/error state === */}
+                <a href={orderInfo?.origin ? `https://${orderInfo.origin}` : '#'} style={styles.backLink}>← Retour</a>
                 {orderInfo ? (
                     <div style={styles.summaryContainer}>
-                        {/* Utiliser le logo de l'URL ou celui du thème comme fallback */}
-                        {/* Kaychof wach kayn logo f l URL, ila makanch kaystakhdem dyal Theme */}
-                        {(orderInfo.logo || currentTheme.logoUrl) &&
-                            <img
-                                src={orderInfo.logo || currentTheme.logoUrl}
-                                alt="Logo"
-                                style={styles.summaryLogo} // Kay'appliquer lih had style
-                            />}
-                        {/* ============================================== */}
-
+                        {(orderInfo.logo || currentTheme.logoUrl) && <img src={orderInfo.logo || currentTheme.logoUrl} alt="Logo" style={styles.summaryLogo} />}
                         <h4 style={styles.summaryTitle}>Récapitulatif de la commande</h4>
-
-                        <div style={styles.productList}>
-                            {renderProductList(orderInfo.produit)}
-                        </div>
-
+                        <div style={styles.productList}>{renderProductList(orderInfo.produit)}</div>
                         <hr style={styles.summarySeparator} />
-
                         <div style={styles.totalRow}>
                             <span style={styles.totalLabel}>Total à payer</span>
                             <span style={styles.totalPrice}>€{parseFloat(orderInfo.total).toFixed(2)}</span>
                         </div>
                     </div>
-                ) : (
-                    // Message si orderInfo est encore null (ne devrait pas arriver longtemps)
-                    <div style={styles.summaryContainer}><h1 style={styles.priceText}>Chargement...</h1></div>
-                )}
-
+                ) : ( <div style={styles.summaryContainer}><h1 style={styles.priceText}>Chargement...</h1></div> )}
+                
+                {/* === BDDELNA HNA: Les liens utilisent <Link> === */}
                 <div style={styles.footerLinks}>
-                    <a href="#" style={styles.footerLink}>Conditions</a>
-                    <a href="#" style={styles.footerLink}>Confidentialité</a>
+                    {/* Zidna ?origin=... bach les pages légales yakhdo l thème s7i7 */}
+                    <Link to={`/conditions?origin=${orderInfo?.origin || 'default'}`} style={styles.footerLink}>Conditions</Link>
+                    <Link to={`/confidentialite?origin=${orderInfo?.origin || 'default'}`} style={styles.footerLink}>Confidentialité</Link>
+                    <Link to={`/cookies?origin=${orderInfo?.origin || 'default'}`} style={styles.footerLink}>Cookies</Link>
                 </div>
+                 {/* === FIN TBEDAL === */}
             </div>
 
             {/* Colonne DROITE (Formulaire) */}
@@ -250,10 +266,9 @@ const PasserelleDePaiement = () => {
         </div>
     );
 };
-
 // -----------------------------------------------------------
 
-// Styles (Les mêmes que la version précédente, avec panier moderne et logo)
+// Styles (Les mêmes que la version précédente)
 const styles = {
     pageContainer: { display: 'flex', height: '100vh', fontFamily: 'system-ui, sans-serif' },
     pageContainerMobile: { display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'system-ui, sans-serif' },
@@ -282,6 +297,99 @@ const styles = {
     cardElementContainer: { padding: '12px', border: '1px solid #ccc', borderRadius: '4px', width: '100%', boxSizing: 'border-box', marginTop: '5px' },
     subscribeButton: { width: '100%', padding: '15px 0', color: 'white', border: 'none', borderRadius: '6px', fontSize: '18px', fontWeight: 500, cursor: 'pointer', marginTop: '25px', transition: 'background-color 0.2s' },
     termsText: { fontSize: '12px', color: '#6a6a6a', textAlign: 'center', marginTop: '15px', lineHeight: 1.4 },
+    errorText: { color: 'red', fontSize: '14px', marginTop: '10px' },
+    // ... (Styles Panneau Gauche et Panier Moderne - Aucune modif ici) ...
+    pageContainer: { display: 'flex', height: '100vh', fontFamily: 'system-ui, sans-serif' },
+    pageContainerMobile: { display: 'flex', flexDirection: 'column', minHeight: '100vh', fontFamily: 'system-ui, sans-serif' },
+    leftPanel: { flex: 1, color: 'white', padding: '40px 60px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' },
+    leftPanelMobile: { width: '100%', color: 'white', padding: '30px 20px', order: 1 },
+    summaryContainer: { flexGrow: 1, marginTop: '30px' },
+    backLink: { color: 'rgba(255, 255, 255, 0.8)', textDecoration: 'none', fontSize: '16px', marginBottom: '30px', display: 'inline-block' },
+    summaryLogo: { maxWidth: '150px', maxHeight: '50px', objectFit: 'contain', marginBottom: '30px', display: 'block' },
+    summaryTitle: { fontSize: '20px', fontWeight: '600', marginBottom: '20px', paddingBottom: '15px', borderBottom: '1px solid rgba(255, 255, 255, 0.2)', color: 'rgba(255, 255, 255, 0.9)' },
+    productList: { marginBottom: '20px' },
+    productItem: { display: 'flex', justifyContent: 'space-between', padding: '12px 0', fontSize: '16px', opacity: 0.9, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' },
+    productItemName: { fontWeight: 500 },
+    summarySeparator: { border: 'none', borderTop: '1px solid rgba(255, 255, 255, 0.2)', margin: '20px 0' },
+    totalRow: { display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '20px', marginTop: '15px' },
+    totalLabel: { opacity: 0.9 },
+    totalPrice: { /* Style spécifique si besoin */ },
+    footerLinks: { marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' },
+    footerLink: { color: 'rgba(255, 255, 255, 0.6)', textDecoration: 'none', fontSize: '14px', marginRight: '20px' },
+
+    // --- Styles Panneau Droit (Thème appliqué dynamiquement) ---
+    rightPanel: { flex: 1, padding: '40px 60px', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflowY: 'auto', transition: 'background-color 0.3s' },
+    rightPanelMobile: { width: '100%', padding: '30px 20px', order: 2, paddingTop: '20px', transition: 'background-color 0.3s' },
+
+    formContainer: { maxWidth: '450px', margin: '0 auto', width: '100%' },
+
+    // --- JDID: Styles Header Formulaire ---
+    formHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '15px', // Espace réduit avant séparateur
+    },
+    formTitle: {
+        margin: 0,
+        fontSize: '18px',
+        fontWeight: 600,
+    },
+    cardIcons: {
+        display: 'flex',
+        alignItems: 'center',
+        fontSize: '1.4em', // Taille icônes ajustée
+        opacity: 0.7,
+        gap: '8px', // Espace entre icônes
+    },
+    // --- JDID: Style Séparateur Header ---
+    formHeaderDivider: {
+        border: 'none',
+        borderBottom: '1px solid', // Couleur appliquée dynamiquement
+        margin: '0 0 25px 0', // Espace après séparateur
+    },
+    // --- FIN Header ---
+
+    applePayButton: { width: '100%', padding: '15px 0', backgroundColor: 'black', color: 'white', border: 'none', borderRadius: '6px', fontSize: '18px', fontWeight: 500, cursor: 'pointer', marginBottom: '30px' },
+    // orDivider SUPPRIMÉ
+
+    // --- Styles Inputs/Labels (Couleurs thème appliquées dans le composant) ---
+    label: { display: 'block', fontSize: '14px', marginBottom: '5px', marginTop: '15px', fontWeight: '500' },
+    input: { width: '100%', padding: '12px', borderRadius: '4px', fontSize: '16px', boxSizing: 'border-box', border: '1px solid', transition: 'background-color 0.3s, color 0.3s, border-color 0.3s' },
+    cardElementContainer: { padding: '12px', borderRadius: '4px', width: '100%', boxSizing: 'border-box', marginTop: '5px', border: '1px solid', transition: 'background-color 0.3s, border-color 0.3s' },
+
+    // --- Style Bouton Principal (Couleur thème appliquée dans le composant) ---
+    subscribeButton: { width: '100%', padding: '15px 0', color: 'white', border: 'none', borderRadius: '6px', fontSize: '18px', fontWeight: 500, cursor: 'pointer', marginTop: '25px', transition: 'background-color 0.2s' },
+
+    // --- JDID: Styles Section Sécurité ---
+    securityInfo: {
+        marginTop: '30px',
+        textAlign: 'center',
+    },
+    securityIcons: {
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: '15px',
+        marginBottom: '10px',
+        fontSize: '1.1em', // Taille icônes ajustée
+        opacity: 0.7,
+    },
+    cardIconsImage: {
+        maxHeight: '20px', // L 3lou maximum (bqiti tbeddel had raqam)
+        width: 'auto',     // Bach ybqa l 3erd mnasb
+        display: 'block',  // Bach maydirch espace zayd
+    },
+    securityText: {
+        fontSize: '12px', // Légèrement plus petit
+        lineHeight: 1.5,
+        maxWidth: '400px',
+        margin: '0 auto',
+        opacity: 0.8, // Légèrement transparent
+    },
+    // --- FIN Section Sécurité ---
+
+    // termsText SUPPRIMÉ (remplacé par securityText)
     errorText: { color: 'red', fontSize: '14px', marginTop: '10px' }
 };
 
